@@ -1,0 +1,198 @@
+#include <Arduino.h>
+#include "driver/ledc.h"
+
+#define b1 19
+#define b2 15
+#define b3 34
+#define b4 33
+
+#define canalPWM1 0  // Canal PWM1
+
+#define freqPWM 50
+#define resPWM 10
+#define pinPWMS 21
+
+#define canalPWMr 8
+#define canalPWMv 9
+#define canalPWMa 10
+
+#define pinPWMr 13
+#define pinPWMv 12
+#define pinPWMa 14
+
+int duty[] = {26, 52, 77, 103, 128};
+int inte[] = {0, 26, 52, 77, 103, 128};
+
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+volatile int derecha;
+volatile int izquierda;
+uint8_t contadorBot = 4;
+
+volatile int color;
+volatile int intensidad;
+uint8_t contadorLed = 0;
+volatile uint8_t contadorInt = 0; // Volatile para ISR
+
+const int debounceDelay = 200; // 200 ms para antirrebote
+volatile unsigned long lastDebounceTime1 = 0;
+volatile unsigned long lastDebounceTime2 = 0;
+volatile unsigned long lastDebounceTime3 = 0; // Para BTN3
+volatile unsigned long lastDebounceTime4 = 0; // Para BTN4
+
+void IRAM_ATTR BTN1_ISR();
+void IRAM_ATTR BTN2_ISR();
+void IRAM_ATTR BTN3_ISR();
+void IRAM_ATTR BTN4_ISR();
+
+void initPWM1(void);
+void initPWMr(void);
+void initPWMv(void);
+void initPWMa(void);
+
+void setup() {
+  initPWM1();
+  initPWMr();
+  initPWMv();
+  initPWMa();
+
+  pinMode(b1, INPUT_PULLDOWN);
+  pinMode(b2, INPUT_PULLDOWN);
+  pinMode(b3, INPUT_PULLDOWN);
+  pinMode(b4, INPUT_PULLDOWN);
+
+  attachInterrupt(digitalPinToInterrupt(b1), BTN1_ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(b2), BTN2_ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(b3), BTN3_ISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(b4), BTN4_ISR, RISING);
+
+  Serial.begin(115200);
+}
+
+void loop() {
+  Serial.printf("numero %u\n", contadorBot);
+  derecha = digitalRead(b1);
+  izquierda = digitalRead(b2);
+
+  color = digitalRead(b3);
+  intensidad = digitalRead(b4);
+
+  for (int i = 0; i < 5; i++) {
+    if (contadorBot == i) {
+      ledcWrite(canalPWM1, duty[i]);
+    }
+  }
+
+  switch (contadorLed) {
+    case 0:
+      ledcWrite(canalPWMv, 0);
+      ledcWrite(canalPWMa, 0);
+      ledcWrite(canalPWMr, inte[contadorInt]);
+      break;
+
+    case 1:
+      ledcWrite(canalPWMr, 0);
+      ledcWrite(canalPWMa, 0);
+      ledcWrite(canalPWMv, inte[contadorInt]);
+      break;
+
+    case 2:
+      ledcWrite(canalPWMr, 0);
+      ledcWrite(canalPWMv, 0);
+      ledcWrite(canalPWMa, inte[contadorInt]);
+      break;
+
+      case 3: 
+       if (contadorBot<2) { 
+        ledcWrite(canalPWMv, 0); 
+        ledcWrite(canalPWMa, 0); 
+        ledcWrite(canalPWMr, 128); 
+        } 
+        else if (2 <= contadorBot < 4) {
+        ledcWrite(canalPWMr, 0);
+        ledcWrite(canalPWMa, 0); 
+        ledcWrite(canalPWMv, 128); 
+        }
+        else { 
+        ledcWrite(canalPWMr, 0); 
+        ledcWrite(canalPWMv, 0); 
+        ledcWrite(canalPWMa, 128); 
+        } 
+        break;
+  }
+}
+
+void initPWM1(void) {
+  ledcSetup(canalPWM1, freqPWM, resPWM);
+  ledcAttachPin(pinPWMS, canalPWM1);
+  ledcWrite(canalPWM1, 0);
+}
+
+void initPWMr(void) {
+  ledcSetup(canalPWMr, freqPWM, resPWM);
+  ledcAttachPin(pinPWMr, canalPWMr);
+  ledcWrite(canalPWMr, 0);
+}
+
+void initPWMv(void) {
+  ledcSetup(canalPWMv, freqPWM, resPWM);
+  ledcAttachPin(pinPWMv, canalPWMv);
+  ledcWrite(canalPWMv, 0);
+}
+
+void initPWMa(void) {
+  ledcSetup(canalPWMa, freqPWM, resPWM);
+  ledcAttachPin(pinPWMa, canalPWMa);
+  ledcWrite(canalPWMa, 0);
+}
+
+void IRAM_ATTR BTN1_ISR() {
+  unsigned long currentTime = millis();
+  if ((currentTime - lastDebounceTime1) > debounceDelay) {
+    portENTER_CRITICAL_ISR(&mux);
+    contadorBot++;
+    if (contadorBot > 4) {
+      contadorBot = 4;
+    }
+    portEXIT_CRITICAL_ISR(&mux);
+    lastDebounceTime1 = currentTime;
+  }
+}
+
+void IRAM_ATTR BTN2_ISR() {
+  unsigned long currentTime = millis();
+  if ((currentTime - lastDebounceTime2) > debounceDelay) {
+    portENTER_CRITICAL_ISR(&mux);
+    if (contadorBot > 0) {
+      contadorBot--;
+    }
+    portEXIT_CRITICAL_ISR(&mux);
+    lastDebounceTime2 = currentTime;
+  }
+}
+
+void IRAM_ATTR BTN3_ISR() {
+  unsigned long currentTime = millis();
+  if ((currentTime - lastDebounceTime3) > debounceDelay) {
+    portENTER_CRITICAL_ISR(&mux);
+    contadorLed++;
+    if (contadorLed > 3) {
+      contadorLed = 0;
+    }
+    portEXIT_CRITICAL_ISR(&mux);
+    lastDebounceTime3 = currentTime;
+  }
+}
+
+void IRAM_ATTR BTN4_ISR() {
+  unsigned long currentTime = millis();
+  if ((currentTime - lastDebounceTime4) > debounceDelay) {
+    portENTER_CRITICAL_ISR(&mux);
+    contadorInt++;
+    if (contadorInt > 5) {
+      contadorInt = 0;
+    }
+    portEXIT_CRITICAL_ISR(&mux);
+    lastDebounceTime4 = currentTime;
+  }
+}
